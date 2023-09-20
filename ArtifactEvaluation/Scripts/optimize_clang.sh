@@ -9,16 +9,16 @@
 
 ## Just run optimize_clang.sh
 ## All artifacts will be created in a directory named
-## clang_propeller_bolt_binaries
+## clang_propeller_binaries
 
 set -eux
 
 # Set the base directory
 CWD="$(pwd)"
-BASE_DIR=${CWD}/clang_propeller_bolt_binaries
+BASE_DIR=${CWD}/clang_propeller_binaries
 # If base directory exists, then move it over.
 if [[ -d "${BASE_DIR}" ]]; then
-    mv ${BASE_DIR} "$(pwd)"/clang_propeller_bolt_binaries.old
+    mv ${BASE_DIR} "$(pwd)"/clang_propeller_binaries.old
 fi
 
 mkdir -p "${BASE_DIR}"
@@ -31,10 +31,9 @@ PATH_TO_TRUNK_LLVM_INSTALL=${BASE_DIR}/trunk_llvm_install
 # This is used to collect profiles and benchmark the different clang binaries.
 # Benchmarking recipe:  Use the clang binary to build clang.
 BENCHMARKING_CLANG_BUILD=${BASE_DIR}/benchmarking_clang_build
-# The pristine baseline clang binary built with PGO and ThinLTO.
-PATH_TO_PRISTINE_BASELINE_CLANG_BUILD=${BASE_DIR}/pristine_baseline_build
-# The path to a propeller optimized build of clang.
-PATH_TO_OPTIMIZED_PROPELLER_BUILD=${BASE_DIR}/optimized_propeller_build
+# The path to a propeller optimized build of clang (aligned and noaligned).
+PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD=${BASE_DIR}/optimized_propeller_align_build
+PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD=${BASE_DIR}/optimized_propeller_noalign_build
 # Symlink all binaries here
 PATH_TO_ALL_BINARIES=${BASE_DIR}/PreBuiltBinaries
 # Path to all profiles
@@ -50,7 +49,8 @@ date > ${PATH_TO_ALL_RESULTS}/script_start_time.txt
 mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
 git clone https://github.com/llvm/llvm-project.git
 # Set correct git hash here!
-cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 6db71b8f1418170324b49d20f1f7b3f7c5086066
+cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 7dc65662730c4d156d08a26a64f5d353ad9bbd08
+patch -p1 < propeller-alignment.patch
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt;bolt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja install
@@ -120,34 +120,6 @@ COMMON_CMAKE_FLAGS=(
   "-DLLVM_ENABLE_LTO=Thin"
   "-DLLVM_PROFDATA_FILE=${PATH_TO_INSTRUMENTED_BINARY}/profiles/clang.profdata" )
 
-PRISTINE_CC_LD_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld" )
-
-# Build Pristine Baseline first.
-mkdir -p ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD} && cd ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}
-cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${PRISTINE_CC_LD_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
-ninja clang
-cp bin/clang ${PATH_TO_ALL_BINARIES}/clang.baseline
-
-# Additional Flags to build an instrumented BOLT binary. BOLT needs -Wl,-q which
-# dumps all static relocations for later rewriting.
-INSTRUMENTED_BOLT_CC_LD_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,-q"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,-q"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,-q" )
-
-# Build Baseline BOLT Only Instrumented Clang Binary
-PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD=${BASE_DIR}/baseline_bolt_only_clang_build
-mkdir -p ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD} && cd ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}
-cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${INSTRUMENTED_BOLT_CC_LD_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
-ninja clang
-
 # Additional Flags to build an Instrumented Propeller binary.
 INSTRUMENTED_PROPELLER_CC_LD_CMAKE_FLAGS=(
   "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
@@ -163,12 +135,10 @@ cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${INSTRUMENTED_PROPELLER_CC_LD_CMAKE_
 ninja clang
 
 # Set up Benchmarking and BUILD.
-# We want to use one profile to optimize both BOLT and Propeller for
-# consistency.
-# Use the Pristine Baseline build to collect profiles.
+# Use the Propeller-instrumented Baseline build to collect profiles.
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
-ln -sf ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang
-ln -sf ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang++
+ln -sf ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang
+ln -sf ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ${BENCHMARKING_CLANG_BUILD}
 ninja clean
 
@@ -181,20 +151,6 @@ ls perf.data
 # Copy the profiles for future use
 cd ${BENCHMARKING_CLANG_BUILD}
 cp perf.data ${PATH_TO_PROFILES}
-
-# Convert Profiles to BOLT format.
-PATH_TO_PERF2BOLT=${PATH_TO_TRUNK_LLVM_INSTALL}/bin/perf2bolt
-cd ${PATH_TO_PROFILES}
-/usr/bin/time -v ${PATH_TO_PERF2BOLT} ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION} -p ${PATH_TO_PROFILES}/perf.data -o ${PATH_TO_PROFILES}/perf.fdata -w ${PATH_TO_PROFILES}/perf.yaml 2> ${PATH_TO_ALL_RESULTS}/mem_bolt_profile_conversion.txt
-
-# Rewrite binary to get a BOLT optimized clang.
-PATH_TO_LLVMBOLT=${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-bolt
-cd ${PATH_TO_PROFILES}
-/usr/bin/time -v ${PATH_TO_LLVMBOLT} ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION} -o ${PATH_TO_PROFILES}/clang-${CLANG_VERSION}.bolt -b ${PATH_TO_PROFILES}/perf.yaml -reorder-blocks=ext-tsp -reorder-functions=hfsort+ -split-functions -split-all-cold -dyno-stats -icf=1 -use-gnu-stack -inline-small-functions -simplify-rodata-loads -plt=hot 2> ${PATH_TO_ALL_RESULTS}/mem_bolt_rewrite.txt
-# Copy over the bolted clang binary
-cp ${PATH_TO_PROFILES}/clang-${CLANG_VERSION}.bolt ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin
-# Save a copy of the bolted clang binary
-mv ${PATH_TO_PROFILES}/clang-${CLANG_VERSION}.bolt ${PATH_TO_ALL_BINARIES}/clang.bolt
 
 # Clone and Build create_llvm_prof, the tool to convert to propeller format.
 PATH_TO_CREATE_LLVM_PROF=${BASE_DIR}/create_llvm_prof_build
@@ -213,52 +169,60 @@ ls create_llvm_prof
 
 cp create_llvm_prof ${PATH_TO_ALL_BINARIES}
 
-/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
+/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --propeller_verbose_cluster_output --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
 
-# Build a Propeller Optimized binary.
-OPTIMIZED_PROPELLER_CC_LD_CMAKE_FLAGS=(
+# Build a Propeller Optimized binary without special propeller alignment.
+OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS=(
   "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt"
   "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt"
   "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
   "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
   "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix" )
 
-mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}
-cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
+mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}
+cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja clang
-cp bin/clang ${PATH_TO_ALL_BINARIES}/clang.propeller
+cp bin/clang ${PATH_TO_ALL_BINARIES}/clang.propeller.noalign
 # Measure the peak RSS of the final link action on cached native object files.
-rm bin/clang-16 && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_build.txt
+rm bin/clang-16 && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_noalign_build.txt
 
-# Run comparison of baseline verus propeller optimized clang versus bolt
-# optimized clang
+# Build a Propeller Optimized binary with special propeller alignment.
+OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS=(
+  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true"
+  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true"
+  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true"
+  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true"
+  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true" )
+
+mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}
+cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
+ninja clang
+cp bin/clang ${PATH_TO_ALL_BINARIES}/clang.propeller.align
+# Measure the peak RSS of the final link action on cached native object files.
+rm bin/clang-16 && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_align_build.txt
+
+# Run comparison of baseline verus propeller-noaligned and propeller-aligned.
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
-ln -sf ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang
-ln -sf ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang++
+ln -sf ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang
+ln -sf ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
 perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_baseline.txt
 
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
-ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}/bin/clang-${CLANG_VERSION} clang
-ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}/bin/clang-${CLANG_VERSION} clang++
+ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang
+ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller.txt
+perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_noalign.txt
 
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
-ln -sf ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION}.bolt clang
-ln -sf ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION}.bolt clang++
+ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang
+ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_bolt.txt
+perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_align.txt
 
-
-printf "Baseline Stats\n" > ${BASE_DIR}/Results/sizes_clang.txt
-printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} | awk '{print $5}'  >> ${BASE_DIR}/Results/sizes_clang.txt
-printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_PRISTINE_BASELINE_CLANG_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bbaddrmap") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }'>> ${BASE_DIR}/Results/sizes_clang.txt
 
 printf "\nPropeller Instrumented Stats (PM)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
 printf "Total Size\n"  >> ${BASE_DIR}/Results/sizes_clang.txt
@@ -266,25 +230,19 @@ ls -l ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} |
 printf ".text .ehframe bbaddrmap relocs\n"  >> ${BASE_DIR}/Results/sizes_clang.txt
 ${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }'  >> ${BASE_DIR}/Results/sizes_clang.txt
 
+printf "\nPropeller no-algin Optimized Stats (PO)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
+printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
+ls -l ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
+printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
+${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
+
 printf "\nPropeller Optimized Stats (PO)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
 printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
+ls -l ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
 printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_OPTIMIZED_PROPELLER_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
-
-printf "\nBOLT Instrumented Stats (BM)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
-printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".rela.text") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
-
-printf "\nBOLT Optimized Stats (BO)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION}.bolt |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
-printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_INSTRUMENTED_BOLT_CLANG_BUILD}/bin/clang-${CLANG_VERSION}.bolt | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".rela.text") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
+${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
 
 
-cd ${CWD} && ln -sf clang_propeller_bolt_binaries/Results Results
+cd ${CWD} && ln -sf clang_propeller_binaries/Results Results
 
 date > ${PATH_TO_ALL_RESULTS}/script_end_time.txt
