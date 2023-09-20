@@ -50,7 +50,7 @@ mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
 git clone https://github.com/llvm/llvm-project.git
 # Set correct git hash here!
 cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 7dc65662730c4d156d08a26a64f5d353ad9bbd08
-patch -p1 < propeller-alignment.patch
+patch -p1 < ${BASE_DIR}/propeller-alignment.patch
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt;bolt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja install
