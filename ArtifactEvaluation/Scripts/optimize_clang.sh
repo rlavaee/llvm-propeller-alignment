@@ -3,9 +3,9 @@
 ## This script does the following:
 ## 1. It checks out and builds trunk LLVM.
 ## 2. It builds multiple clang binaries towards building a
-##    propeller and bolt optimized clang binary.
+##    propeller-aligned and a propeller-nonaligned binary.
 ## 3. It runs performance comparisons of a baseline clang
-##    binary and the propeller & bolt optimized clang binary.
+##    binary and the propeller-optimized clang binaries.
 
 ## Just run optimize_clang.sh
 ## All artifacts will be created in a directory named
@@ -50,14 +50,12 @@ mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
 git clone https://github.com/llvm/llvm-project.git
 # Set correct git hash here!
 cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 7dc65662730c4d156d08a26a64f5d353ad9bbd08
-patch -p1 < ${BASE_DIR}/propeller-alignment.patch
+patch -p1 < ${CWD}/propeller-alignment.patch
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
-cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt;bolt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja install
 CLANG_VERSION=$(sed -Ene 's!^CLANG_EXECUTABLE_VERSION:STRING=(.*)$!\1!p' ${PATH_TO_TRUNK_LLVM_BUILD}/CMakeCache.txt)
 mkdir -p ${PATH_TO_ALL_BINARIES}
-cp ${PATH_TO_TRUNK_LLVM_INSTALL}/bin/perf2bolt ${PATH_TO_ALL_BINARIES}
-cp ${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-bolt ${PATH_TO_ALL_BINARIES}
 
 # Build FDO/PGO Instrumented binary
 PATH_TO_INSTRUMENTED_BINARY=${BASE_DIR}/clang_instrumented_build
@@ -157,7 +155,7 @@ PATH_TO_CREATE_LLVM_PROF=${BASE_DIR}/create_llvm_prof_build
 mkdir -p ${PATH_TO_CREATE_LLVM_PROF} && cd ${PATH_TO_CREATE_LLVM_PROF}
 
 git clone --recursive https://github.com/google/autofdo.git
-cd autofdo && git fetch && git checkout origin/2022.09.merge
+cd autofdo && git fetch && git checkout master
 cd ${PATH_TO_CREATE_LLVM_PROF}
 mkdir -p bin && cd bin
 cmake -G Ninja -DCMAKE_INSTALL_PREFIX="." \
@@ -184,7 +182,7 @@ cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_NOALIGN_C
 ninja clang
 cp bin/clang ${PATH_TO_ALL_BINARIES}/clang.propeller.noalign
 # Measure the peak RSS of the final link action on cached native object files.
-rm bin/clang-16 && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_noalign_build.txt
+rm bin/clang-${CLANG_VERSION} && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_noalign_build.txt
 
 # Build a Propeller Optimized binary with special propeller alignment.
 OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS=(
@@ -199,7 +197,7 @@ cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMA
 ninja clang
 cp bin/clang ${PATH_TO_ALL_BINARIES}/clang.propeller.align
 # Measure the peak RSS of the final link action on cached native object files.
-rm bin/clang-16 && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_align_build.txt
+rm bin/clang-${CLANG_VERSION} && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_align_build.txt
 
 # Run comparison of baseline verus propeller-noaligned and propeller-aligned.
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
