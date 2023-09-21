@@ -13,6 +13,9 @@
 
 set -eux
 
+# Install prerequistes.
+sudo apt install libunwind-dev libgflags-dev libssl-dev libelf-dev protobuf-compiler lld
+
 # Set the base directory
 CWD="$(pwd)"
 BASE_DIR=${CWD}/clang_propeller_binaries
