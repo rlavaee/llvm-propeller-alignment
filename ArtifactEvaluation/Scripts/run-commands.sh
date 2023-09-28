@@ -1,5 +1,5 @@
 # Usage ./run-commands $1 $2
-# $1 : path to the clang binary
+# $1 : path to the clang binary: Use ${BASE_DIR}/path/to/clang-18
 # $2 : number of commands to run
 
 set -eu
