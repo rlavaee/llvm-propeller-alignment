@@ -1,5 +1,5 @@
 diff --git a/llvm/include/llvm/CodeGen/BasicBlockSectionsProfileReader.h b/llvm/include/llvm/CodeGen/BasicBlockSectionsProfileReader.h
-index cd27fea771ba..b9baac122022 100644
+index cd27fea771ba..f28d7ae747ae 100644
 --- a/llvm/include/llvm/CodeGen/BasicBlockSectionsProfileReader.h
 +++ b/llvm/include/llvm/CodeGen/BasicBlockSectionsProfileReader.h
 @@ -23,6 +23,7 @@
@@ -25,7 +25,7 @@ index cd27fea771ba..b9baac122022 100644
  
  class BasicBlockSectionsProfileReader : public ImmutablePass {
  public:
-@@ -71,8 +78,10 @@ public:
+@@ -71,8 +78,11 @@ public:
    // function. If the first element is true and the second element is empty, it
    // means unique basic block sections are desired for all basic blocks of the
    // function.
@@ -34,7 +34,8 @@ index cd27fea771ba..b9baac122022 100644
 +  std::pair<bool, PropellerProfile>
 +  getPropellerProfileForFunction(StringRef FuncName) const;
 +
-+  BranchProbability getEdgeProbability(StringRef FuncName, unsigned FromBBID, unsigned ToBBID) const;
++  BranchProbability getEdgeProbability(StringRef FuncName, unsigned FromBBID,
++                                       unsigned ToBBID) const;
  
    // Initializes the FunctionNameToDIFilename map for the current module and
    // then reads the profile for matching functions.
@@ -67,7 +68,7 @@ index 33e70b160d92..be93a3cbaf72 100644
    return true;
  }
 diff --git a/llvm/lib/CodeGen/BasicBlockSectionsProfileReader.cpp b/llvm/lib/CodeGen/BasicBlockSectionsProfileReader.cpp
-index 5dede452ec34..2c207bc4d569 100644
+index 5dede452ec34..c21fff5021e3 100644
 --- a/llvm/lib/CodeGen/BasicBlockSectionsProfileReader.cpp
 +++ b/llvm/lib/CodeGen/BasicBlockSectionsProfileReader.cpp
 @@ -20,6 +20,8 @@
@@ -79,7 +80,7 @@ index 5dede452ec34..2c207bc4d569 100644
  #include "llvm/Support/Error.h"
  #include "llvm/Support/LineIterator.h"
  #include "llvm/Support/MemoryBuffer.h"
-@@ -34,16 +36,25 @@ INITIALIZE_PASS(BasicBlockSectionsProfileReader, "bbsections-profile-reader",
+@@ -34,16 +36,29 @@ INITIALIZE_PASS(BasicBlockSectionsProfileReader, "bbsections-profile-reader",
                  false)
  
  bool BasicBlockSectionsProfileReader::isFunctionHot(StringRef FuncName) const {
@@ -100,18 +101,22 @@ index 5dede452ec34..2c207bc4d569 100644
 +                                         : std::pair(false, PropellerProfile());
 +}
 +
-+BranchProbability BasicBlockSectionsProfileReader::getEdgeProbability(StringRef FuncName, unsigned FromBBID, unsigned ToBBID) const {
++BranchProbability BasicBlockSectionsProfileReader::getEdgeProbability(
++    StringRef FuncName, unsigned FromBBID, unsigned ToBBID) const {
 +  auto R = getPropellerProfileForFunction(FuncName);
-+  if (!R.first) return BranchProbability();
++  if (!R.first)
++    return BranchProbability();
 +  unsigned FromFreq = R.second.NodeFrequency.lookup(FromBBID);
-+  if (FromFreq == 0) return BranchProbability();
++  if (FromFreq == 0)
++    return BranchProbability();
 +  auto EdgesFrom = R.second.EdgeFrequency.lookup(FromBBID);
-+  if (EdgesFrom.empty()) return BranchProbability(0, FromFreq);
++  if (EdgesFrom.empty())
++    return BranchProbability(0, FromFreq);
 +  return BranchProbability(EdgesFrom.lookup(ToBBID), FromFreq);
  }
  
  // Basic Block Sections can be enabled for a subset of machine basic blocks.
-@@ -65,7 +76,7 @@ BasicBlockSectionsProfileReader::getBBClusterInfoForFunction(
+@@ -65,7 +80,7 @@ BasicBlockSectionsProfileReader::getBBClusterInfoForFunction(
  // !!4
  Error BasicBlockSectionsProfileReader::ReadProfile() {
    assert(MBuf);
@@ -120,12 +125,13 @@ index 5dede452ec34..2c207bc4d569 100644
  
    auto invalidProfileError = [&](auto Message) {
      return make_error<StringError>(
-@@ -87,6 +98,28 @@ Error BasicBlockSectionsProfileReader::ReadProfile() {
+@@ -87,6 +102,29 @@ Error BasicBlockSectionsProfileReader::ReadProfile() {
  
    for (; !LineIt.is_at_eof(); ++LineIt) {
      StringRef S(*LineIt);
 +    if (S[0] == '#') {
-+      if (FI == ProgramBBClusterInfo.end()) continue;
++      if (FI == ProgramBBClusterInfo.end())
++        continue;
 +      if (!S.consume_front("#cfg-prof "))
 +        continue;
 +      SmallVector<StringRef, 4> BlockProfile;
@@ -149,7 +155,7 @@ index 5dede452ec34..2c207bc4d569 100644
      if (S[0] == '@')
        continue;
      // Check for the leading "!"
-@@ -113,7 +146,7 @@ Error BasicBlockSectionsProfileReader::ReadProfile() {
+@@ -113,7 +151,7 @@ Error BasicBlockSectionsProfileReader::ReadProfile() {
          if (BBID == 0 && CurrentPosition)
            return invalidProfileError("Entry BB (0) does not begin a cluster.");
  
@@ -159,29 +165,30 @@ index 5dede452ec34..2c207bc4d569 100644
        }
        CurrentCluster++;
 diff --git a/llvm/lib/CodeGen/MachineBasicBlock.cpp b/llvm/lib/CodeGen/MachineBasicBlock.cpp
-index 280ced65db7d..eca5701503c2 100644
+index 280ced65db7d..2213e80b648b 100644
 --- a/llvm/lib/CodeGen/MachineBasicBlock.cpp
 +++ b/llvm/lib/CodeGen/MachineBasicBlock.cpp
-@@ -952,6 +952,7 @@ bool MachineBasicBlock::isSuccessor(const MachineBasicBlock *MBB) const {
+@@ -952,6 +952,8 @@ bool MachineBasicBlock::isSuccessor(const MachineBasicBlock *MBB) const {
  }
  
  bool MachineBasicBlock::isLayoutSuccessor(const MachineBasicBlock *MBB) const {
-+  if (SectionID != MBB->getSectionID()) return false;
++  if (SectionID != MBB->getSectionID())
++    return false;
    MachineFunction::const_iterator I(this);
    return std::next(I) == MachineFunction::const_iterator(MBB);
  }
 diff --git a/llvm/lib/CodeGen/MachineBlockPlacement.cpp b/llvm/lib/CodeGen/MachineBlockPlacement.cpp
-index 912e9ec993e3..68e470a72512 100644
+index 912e9ec993e3..61b39e443117 100644
 --- a/llvm/lib/CodeGen/MachineBlockPlacement.cpp
 +++ b/llvm/lib/CodeGen/MachineBlockPlacement.cpp
-@@ -32,6 +32,7 @@
- #include "llvm/ADT/SmallPtrSet.h"
- #include "llvm/ADT/SmallVector.h"
+@@ -34,6 +34,7 @@
  #include "llvm/ADT/Statistic.h"
-+#include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
  #include "llvm/Analysis/BlockFrequencyInfoImpl.h"
  #include "llvm/Analysis/ProfileSummaryInfo.h"
++#include "llvm/CodeGen/BasicBlockSectionsProfileReader.h"
  #include "llvm/CodeGen/MBFIWrapper.h"
+ #include "llvm/CodeGen/MachineBasicBlock.h"
+ #include "llvm/CodeGen/MachineBlockFrequencyInfo.h"
 @@ -380,6 +381,8 @@ class MachineBlockPlacement : public MachineFunctionPass {
    /// A handle to the function-wide block frequency pass.
    std::unique_ptr<MBFIWrapper> MBFI;
@@ -203,58 +210,58 @@ index 912e9ec993e3..68e470a72512 100644
  
  public:
    static char ID; // Pass identification, replacement for typeid
-@@ -2903,7 +2908,11 @@ void MachineBlockPlacement::alignBlocks() {
+@@ -2903,7 +2908,14 @@ void MachineBlockPlacement::alignBlocks() {
    if (FunctionChain.begin() == FunctionChain.end())
      return; // Empty chain.
  
-+
 +  bool BBSections = BBSectionsProfileReader && F->hasBBSections();
 +
    const BranchProbability ColdProb(1, 5); // 20%
-+  BlockFrequency BBSectionsEntryFreq = BBSections ? BBSectionsProfileReader->getPropellerProfileForFunction(F->getName()).second.NodeFrequency.lookup(0) : 1;
++  BlockFrequency BBSectionsEntryFreq =
++      BBSections ? BBSectionsProfileReader
++                       ->getPropellerProfileForFunction(F->getName())
++                       .second.NodeFrequency.lookup(0)
++                 : 1;
    BlockFrequency EntryFreq = MBFI->getBlockFreq(&F->front());
    BlockFrequency WeightedEntryFreq = EntryFreq * ColdProb;
    for (MachineBasicBlock *ChainBB : FunctionChain) {
-@@ -2925,15 +2934,27 @@ void MachineBlockPlacement::alignBlocks() {
+@@ -2925,15 +2937,25 @@ void MachineBlockPlacement::alignBlocks() {
      // If the block is cold relative to the function entry don't waste space
      // aligning it.
      BlockFrequency Freq = MBFI->getBlockFreq(ChainBB);
 -    if (Freq < WeightedEntryFreq)
-+    BlockFrequency BBSectionsFreq = BBSections ? BBSectionsProfileReader->getPropellerProfileForFunction(F->getName()).second.NodeFrequency.lookup(*ChainBB->getBBID()) : 0;
++    BlockFrequency BBSectionsFreq =
++        BBSections ? BBSectionsProfileReader
++                         ->getPropellerProfileForFunction(F->getName())
++                         .second.NodeFrequency.lookup(*ChainBB->getBBID())
++                   : 0;
 +    if (BBSectionsFreq.getFrequency() != 0) {
 +      if (BBSectionsFreq < BBSectionsEntryFreq * ColdProb)
 +        continue;
 +    } else if (Freq < WeightedEntryFreq) {
-+      if (ChainBB->getNumber()==281 && F->getName().equals("_ZN4llvm12SelectionDAG7CombineENS_12CombineLevelEPNS_9AAResultsENS_10CodeGenOpt5LevelE"))
-+        errs() << "Because 1\n";
        continue;
 +    }
  
-+    //if (BBSectionsFreq.getFrequency() == 0) {
      // If the block is cold relative to its loop header, don't align it
      // regardless of what edges into the block exist.
      MachineBasicBlock *LoopHeader = L->getHeader();
      BlockFrequency LoopHeaderFreq = MBFI->getBlockFreq(LoopHeader);
 -    if (Freq < (LoopHeaderFreq * ColdProb))
 +    if (Freq < (LoopHeaderFreq * ColdProb)) {
-+      if (ChainBB->getNumber()==281 && F->getName().equals("_ZN4llvm12SelectionDAG7CombineENS_12CombineLevelEPNS_9AAResultsENS_10CodeGenOpt5LevelE"))
-+        errs() << "Because 2\n";
        continue;
 +    }
-+    //}
  
      // If the global profiles indicates so, don't align it.
      if (llvm::shouldOptimizeForSize(ChainBB, PSI, MBFI.get()) &&
-@@ -2960,19 +2981,33 @@ void MachineBlockPlacement::alignBlocks() {
-     if (!LayoutPred->isSuccessor(ChainBB)) {
-       ChainBB->setAlignment(Align);
-       DetermineMaxAlignmentPadding();
-+      if (ChainBB->getNumber()==281 && F->getName().equals("_ZN4llvm12SelectionDAG7CombineENS_12CombineLevelEPNS_9AAResultsENS_10CodeGenOpt5LevelE"))
-+        errs() << "Because 3\n";
+@@ -2963,14 +2985,34 @@ void MachineBlockPlacement::alignBlocks() {
        continue;
      }
  
-+    BlockFrequency BBSectionsLayoutPredFreq = BBSections ? BBSectionsProfileReader->getPropellerProfileForFunction(F->getName()).second.NodeFrequency.lookup(*LayoutPred->getBBID()) : 0;
++    BlockFrequency BBSectionsLayoutPredFreq =
++        BBSections ? BBSectionsProfileReader
++                         ->getPropellerProfileForFunction(F->getName())
++                         .second.NodeFrequency.lookup(*LayoutPred->getBBID())
++                   : 0;
 +
      // Align this block if the layout predecessor's edge into this block is
      // cold relative to the block. When this is true, other predecessors make up
@@ -262,10 +269,17 @@ index 912e9ec993e3..68e470a72512 100644
      // important.
      BranchProbability LayoutProb =
          MBPI->getEdgeProbability(LayoutPred, ChainBB);
-+    BranchProbability BBSectionsLayoutProb = BBSections ? BBSectionsProfileReader->getEdgeProbability(F->getName(), *LayoutPred->getBBID(), *ChainBB->getBBID()) : BranchProbability();
++    BranchProbability BBSectionsLayoutProb =
++        BBSections
++            ? BBSectionsProfileReader->getEdgeProbability(
++                  F->getName(), *LayoutPred->getBBID(), *ChainBB->getBBID())
++            : BranchProbability();
      BlockFrequency LayoutEdgeFreq = MBFI->getBlockFreq(LayoutPred) * LayoutProb;
 -    if (LayoutEdgeFreq <= (Freq * ColdProb)) {
-+    BlockFrequency BBSectionsLayoutEdgeFreq = BBSectionsLayoutProb.isUnknown() ? 0 : BBSectionsLayoutPredFreq * BBSectionsLayoutProb;
++    BlockFrequency BBSectionsLayoutEdgeFreq =
++        BBSectionsLayoutProb.isUnknown()
++            ? 0
++            : BBSectionsLayoutPredFreq * BBSectionsLayoutProb;
 +    if (BBSectionsFreq.getFrequency() != 0) {
 +      if (BBSectionsLayoutEdgeFreq <= (BBSectionsFreq * ColdProb)) {
 +        ChainBB->setAlignment(Align);
@@ -274,13 +288,8 @@ index 912e9ec993e3..68e470a72512 100644
 +    } else if (LayoutEdgeFreq <= (Freq * ColdProb)) {
        ChainBB->setAlignment(Align);
        DetermineMaxAlignmentPadding();
-+    } else {
-+      if (ChainBB->getNumber()==281 && F->getName().equals("_ZN4llvm12SelectionDAG7CombineENS_12CombineLevelEPNS_9AAResultsENS_10CodeGenOpt5LevelE"))
-+        errs() << "Because 4\t" << LayoutEdgeFreq.getFrequency() << " " << Freq.getFrequency() << "\n";
      }
-   }
- }
-@@ -3312,61 +3347,7 @@ void MachineBlockPlacement::findDuplicateCandidates(
+@@ -3312,61 +3354,7 @@ void MachineBlockPlacement::findDuplicateCandidates(
    }
  }
  
@@ -343,12 +352,11 @@ index 912e9ec993e3..68e470a72512 100644
    unsigned TailDupSize = TailDupPlacementThreshold;
    // If only the aggressive threshold is explicitly set, use it.
    if (TailDupPlacementAggressiveThreshold.getNumOccurrences() != 0 &&
-@@ -3430,15 +3411,82 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
+@@ -3430,15 +3418,83 @@ bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
        buildCFGChains();
      }
    }
 +}
-+
 +
 +void MachineBlockPlacement::initDupThreshold() {
 +  DupThreshold = 0;
@@ -375,7 +383,12 @@ index 912e9ec993e3..68e470a72512 100644
 +  DupThreshold = MaxFreq * ThresholdProb;
 +  UseProfileCount = false;
 +}
-+
+ 
+-  // Apply a post-processing optimizing block placement.
+-  if (MF.size() >= 3 && EnableExtTspBlockPlacement &&
+-      (ApplyExtTspWithoutProfile || MF.getFunction().hasProfileData())) {
+-    // Find a new placement and modify the layout of the blocks in the function.
+-    applyExtTsp();
 +bool MachineBlockPlacement::runOnMachineFunction(MachineFunction &MF) {
 +  if (skipFunction(MF.getFunction()))
 +    return false;
@@ -383,20 +396,21 @@ index 912e9ec993e3..68e470a72512 100644
 +  // Check for single-block functions and skip them.
 +  if (std::next(MF.begin()) == MF.end())
 +    return false;
- 
--  // Apply a post-processing optimizing block placement.
--  if (MF.size() >= 3 && EnableExtTspBlockPlacement &&
++
 +  F = &MF;
 +  MBPI = &getAnalysis<MachineBranchProbabilityInfo>();
-+  BBSectionsProfileReader = getAnalysisIfAvailable<BasicBlockSectionsProfileReader>();
-+  MBFI = std::make_unique<MBFIWrapper>(
-+      getAnalysis<MachineBlockFrequencyInfo>());
++  BBSectionsProfileReader =
++      getAnalysisIfAvailable<BasicBlockSectionsProfileReader>();
++  MBFI =
++      std::make_unique<MBFIWrapper>(getAnalysis<MachineBlockFrequencyInfo>());
 +  MLI = &getAnalysis<MachineLoopInfo>();
 +  TII = MF.getSubtarget().getInstrInfo();
 +  TLI = MF.getSubtarget().getTargetLowering();
 +  MPDT = nullptr;
 +  PSI = &getAnalysis<ProfileSummaryInfoWrapperPass>().getPSI();
-+
+ 
+-    // Re-create CFG chain so that we can optimizeBranches and alignBlocks.
+-    createCFGChainExtTsp();
 +  initDupThreshold();
 +
 +  // Initialize PreferredLoopExit to nullptr here since it may never be set if
@@ -413,26 +427,23 @@ index 912e9ec993e3..68e470a72512 100644
 +
 +    // Apply a post-processing optimizing block placement.
 +    if (MF.size() >= 3 && EnableExtTspBlockPlacement &&
-       (ApplyExtTspWithoutProfile || MF.getFunction().hasProfileData())) {
--    // Find a new placement and modify the layout of the blocks in the function.
--    applyExtTsp();
-+      // Find a new placement and modify the layout of the blocks in the function.
++        (ApplyExtTspWithoutProfile || MF.getFunction().hasProfileData())) {
++      // Find a new placement and modify the layout of the blocks in the
++      // function.
 +      applyExtTsp();
- 
--    // Re-create CFG chain so that we can optimizeBranches and alignBlocks.
--    createCFGChainExtTsp();
++
 +      // Re-create CFG chain so that we can optimizeBranches and alignBlocks.
 +      createCFGChainFromCurrentBlockOrder();
 +    }
 +  } else {
 +    createCFGChainFromCurrentBlockOrder();
 +    // Reset alignment for all blocks.
-+    for (MachineBasicBlock &MBB: MF)
++    for (MachineBasicBlock &MBB : MF)
 +      MBB.setAlignment(Align(1));
    }
  
    optimizeBranches();
-@@ -3607,7 +3655,7 @@ void MachineBlockPlacement::assignBlockOrder(
+@@ -3607,7 +3663,7 @@ void MachineBlockPlacement::assignBlockOrder(
  #endif
  }
  
@@ -441,15 +452,7 @@ index 912e9ec993e3..68e470a72512 100644
    BlockToChain.clear();
    ComputedEdges.clear();
    ChainAllocator.DestroyAll();
-@@ -3635,6 +3683,7 @@ class MachineBlockPlacementStats : public MachineFunctionPass {
-   /// A handle to the branch probability pass.
-   const MachineBranchProbabilityInfo *MBPI;
- 
-+
-   /// A handle to the function-wide block frequency pass.
-   const MachineBlockFrequencyInfo *MBFI;
- 
-@@ -3650,6 +3699,7 @@ public:
+@@ -3650,6 +3706,7 @@ public:
    void getAnalysisUsage(AnalysisUsage &AU) const override {
      AU.addRequired<MachineBranchProbabilityInfo>();
      AU.addRequired<MachineBlockFrequencyInfo>();
@@ -458,19 +461,20 @@ index 912e9ec993e3..68e470a72512 100644
      MachineFunctionPass::getAnalysisUsage(AU);
    }
 diff --git a/llvm/lib/CodeGen/TargetPassConfig.cpp b/llvm/lib/CodeGen/TargetPassConfig.cpp
-index 87ac68c834a8..3bcb560bb869 100644
+index 87ac68c834a8..c5127537de8b 100644
 --- a/llvm/lib/CodeGen/TargetPassConfig.cpp
 +++ b/llvm/lib/CodeGen/TargetPassConfig.cpp
-@@ -146,6 +146,8 @@ static cl::opt<RunOutliner> EnableMachineOutliner(
+@@ -146,6 +146,9 @@ static cl::opt<RunOutliner> EnableMachineOutliner(
  // manual override.
  static cl::opt<bool> DisableCFIFixup("disable-cfi-fixup", cl::Hidden,
                                       cl::desc("Disable the CFI fixup pass"));
-+static cl::opt<bool> EnableAlignForBasicBlockSections("enable-align-basic-block-sections", cl::init(false), cl::Hidden,
-+                                                      cl::desc("Enable block alignment after basic block sections pass"));
++static cl::opt<bool> EnableAlignForBasicBlockSections(
++    "enable-align-basic-block-sections", cl::init(false), cl::Hidden,
++    cl::desc("Enable block alignment after basic block sections pass"));
  // Enable or disable FastISel. Both options are needed, because
  // FastISel is enabled by default with -fast, and we wish to be
  // able to enable or disable fast-isel independently from -O0.
-@@ -1267,6 +1269,8 @@ void TargetPassConfig::addMachinePasses() {
+@@ -1267,6 +1270,8 @@ void TargetPassConfig::addMachinePasses() {
            TM->getBBSectionsFuncListBuf()));
      }
      addPass(llvm::createBasicBlockSectionsPass());

@@ -1,6 +1,7 @@
-# Usage ./run-commands $1 $2
+# Usage ./run-commands $1 $2 $3
 # $1 : path to the clang binary: Use ${BASE_DIR}/path/to/clang-18
 # $2 : number of commands to run
+# $3 : taskset argument
 
 set -eu
 
@@ -11,8 +12,12 @@ if [[ ! -d "${BASE_DIR}" ]]; then
     exit 1
 fi
 
-BENCHMARKING_CLANG_BUILD=${BASE_DIR}/benchmarking_clang_build
-
 export CCP=$(cd $(dirname $1); pwd)/$(basename $1)
-cd ${BENCHMARKING_CLANG_BUILD}
-ninja -t commands | head -n $2 | xargs -P1 -L1 -d "\n" bash -x -c
+
+BENCHMARKING_CLANG_BUILD=${BASE_DIR}/benchmarking_clang_build
+cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
+ln -sf ${CCP} clang
+ln -sf ${CCP} clang++
+cd ..
+ninja clean
+ninja -t commands | head -n $2 | xargs -P1 -L1 -d "\n" taskset $3 bash -x -c
