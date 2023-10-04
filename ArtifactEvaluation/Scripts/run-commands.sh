@@ -1,7 +1,7 @@
 # Usage ./run-commands $1 $2 $3
 # $1 : path to the clang binary: Use ${BASE_DIR}/path/to/clang-18
 # $2 : number of commands to run
-# $3 : taskset argument
+# $3 : [optional] prefix to add to all commands: e.g., "taskset -c 11"
 
 set -eu
 
@@ -12,6 +12,11 @@ if [[ ! -d "${BASE_DIR}" ]]; then
     exit 1
 fi
 
+PREFIX=""
+if [[ $# == 3 ]]; then
+  PREFIX=$3
+fi
+
 export CCP=$(cd $(dirname $1); pwd)/$(basename $1)
 
 BENCHMARKING_CLANG_BUILD=${BASE_DIR}/benchmarking_clang_build
@@ -20,4 +25,4 @@ ln -sf ${CCP} clang
 ln -sf ${CCP} clang++
 cd ..
 ninja clean
-ninja -t commands | head -n $2 | xargs -P1 -L1 -d "\n" taskset $3 bash -x -c
+ninja -t commands | head -n $2 | xargs -P1 -L1 -d "\n" ${PREFIX} bash -x -c
