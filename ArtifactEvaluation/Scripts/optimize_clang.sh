@@ -158,7 +158,7 @@ PATH_TO_CREATE_LLVM_PROF=${BASE_DIR}/create_llvm_prof_build
 mkdir -p ${PATH_TO_CREATE_LLVM_PROF} && cd ${PATH_TO_CREATE_LLVM_PROF}
 
 git clone --recursive https://github.com/google/autofdo.git
-cd autofdo && git fetch && git checkout master
+cd autofdo && git fetch && git checkout c03ca4834f144057410786e7fdf6cedf062950a2
 cd ${PATH_TO_CREATE_LLVM_PROF}
 mkdir -p bin && cd bin
 cmake -G Ninja -DCMAKE_INSTALL_PREFIX="." \
