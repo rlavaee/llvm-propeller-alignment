@@ -50,10 +50,10 @@ date > ${PATH_TO_ALL_RESULTS}/script_start_time.txt
 
 # Build Trunk LLVM
 mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
-git clone https://github.com/llvm/llvm-project.git
+git clone https://github.com/rlavaee/llvm-project -b read-cfg-edge-profile
 # Set correct git hash here!
-cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 7dc65662730c4d156d08a26a64f5d353ad9bbd08
-patch -p1 < ${CWD}/propeller-alignment.patch
+#cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 6ae7b735dbd50eb7ade1573a86d037a2943e679c
+#patch -p1 < ${CWD}/propeller-alignment.patch
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
 ninja install
@@ -157,8 +157,8 @@ cp perf.data ${PATH_TO_PROFILES}
 PATH_TO_CREATE_LLVM_PROF=${BASE_DIR}/create_llvm_prof_build
 mkdir -p ${PATH_TO_CREATE_LLVM_PROF} && cd ${PATH_TO_CREATE_LLVM_PROF}
 
-git clone --recursive https://github.com/google/autofdo.git
-cd autofdo && git fetch && git checkout c03ca4834f144057410786e7fdf6cedf062950a2
+git clone --recursive https://github.com/rlavaee/autofdo -b propeller-alignment
+cd autofdo
 cd ${PATH_TO_CREATE_LLVM_PROF}
 mkdir -p bin && cd bin
 cmake -G Ninja -DCMAKE_INSTALL_PREFIX="." \
@@ -174,11 +174,11 @@ cp create_llvm_prof ${PATH_TO_ALL_BINARIES}
 
 # Build a Propeller Optimized binary without special propeller alignment.
 OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix" )
+  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -fbasic-block-address-map"
+  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -fbasic-block-address-map"
+  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map" )
 
 mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}
 cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
@@ -189,11 +189,11 @@ rm bin/clang-${CLANG_VERSION} && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_R
 
 # Build a Propeller Optimized binary with special propeller alignment.
 OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true" )
+  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true -fbasic-block-address-map"
+  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true -fbasic-block-address-map"
+  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map" )
 
 mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}
 cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
