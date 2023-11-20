@@ -1,3 +1,8 @@
 ArtifactEvaluation/clang_propeller_binaries.old
 ArtifactEvaluation/clang_propeller_binaries
 ArtifactEvaluation/Results
+ArtifactEvaluation/run-commands-*
+ArtifactEvaluation/.run-commands-*
+ArtifactEvaluation/.run*
+ArtifactEvaluation/run-default-out.txt
+ArtifactEvaluation/perf.data
