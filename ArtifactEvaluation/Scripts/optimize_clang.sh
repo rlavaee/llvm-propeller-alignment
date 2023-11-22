@@ -70,6 +70,7 @@ INSTRUMENTED_CMAKE_FLAGS=(
   "-DCMAKE_C_COMPILER=${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang"
   "-DCMAKE_CXX_COMPILER=${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang++"
   "-DLLVM_BUILD_INSTRUMENTED=ON"
+  "-DLLVM_STATIC_LINK_CXX_STDLIB=ON"
   "-DLLVM_USE_LINKER=lld" )
 
 BASELINE_CC_LD_CMAKE_FLAGS=(
@@ -119,6 +120,7 @@ COMMON_CMAKE_FLAGS=(
   "-DCMAKE_CXX_COMPILER=${PATH_TO_TRUNK_LLVM_INSTALL}/bin/clang++"
   "-DLLVM_USE_LINKER=lld"
   "-DLLVM_ENABLE_LTO=Thin"
+  "-DLLVM_STATIC_LINK_CXX_STDLIB=ON"
   "-DLLVM_PROFDATA_FILE=${PATH_TO_INSTRUMENTED_BINARY}/profiles/clang.profdata" )
 
 # Additional Flags to build an Instrumented Propeller binary.
@@ -170,7 +172,7 @@ ls create_llvm_prof
 
 cp create_llvm_prof ${PATH_TO_ALL_BINARIES}
 
-/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --propeller_verbose_cluster_output --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
+/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --propeller_verbose_cluster_output --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split --propeller_cfg_dump_dir=${PATH_TO_RESULTS}/cfgs 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
 
 # Build a Propeller Optimized binary without special propeller alignment.
 OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS=(
@@ -208,21 +210,21 @@ ln -sf ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} 
 ln -sf ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_baseline.txt
+perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses,frontend_retired.dsb_miss:u -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_baseline.txt
 
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
 ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang
 ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_noalign.txt
+perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses,frontend_retired.dsb_miss:u -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_noalign.txt
 
 cd ${BENCHMARKING_CLANG_BUILD}/symlink_to_clang_binary
 ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang
 ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} clang++
 cd ..
 ninja clean
-perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_align.txt
+perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses,frontend_retired.dsb_miss:u -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_align.txt
 
 
 printf "\nPropeller Instrumented Stats (PM)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
