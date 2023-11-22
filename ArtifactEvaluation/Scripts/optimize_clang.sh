@@ -44,6 +44,7 @@ PATH_TO_PROFILES=${BASE_DIR}/Profiles
 # Results Directory
 PATH_TO_ALL_RESULTS=${BASE_DIR}/Results
 
+EXTRA_FLAGS="-static-libgcc"
 
 mkdir -p ${PATH_TO_ALL_RESULTS}
 date > ${PATH_TO_ALL_RESULTS}/script_start_time.txt
@@ -74,11 +75,11 @@ INSTRUMENTED_CMAKE_FLAGS=(
   "-DLLVM_USE_LINKER=lld" )
 
 BASELINE_CC_LD_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,-gc-sections -Wl,-z,keep-text-section-prefix" )
+  "-DCMAKE_C_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names"
+  "-DCMAKE_CXX_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names"
+  "-DCMAKE_EXE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
+  "-DCMAKE_SHARED_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,-gc-sections -Wl,-z,keep-text-section-prefix"
+  "-DCMAKE_MODULE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,-gc-sections -Wl,-z,keep-text-section-prefix" )
 
 mkdir -p ${PATH_TO_INSTRUMENTED_BINARY} && cd ${PATH_TO_INSTRUMENTED_BINARY}
 cmake -G Ninja "${INSTRUMENTED_CMAKE_FLAGS[@]}" "${BASELINE_CC_LD_CMAKE_FLAGS[@]}" "${PATH_TO_LLVM_SOURCES}/llvm-project/llvm"
@@ -125,11 +126,11 @@ COMMON_CMAKE_FLAGS=(
 
 # Additional Flags to build an Instrumented Propeller binary.
 INSTRUMENTED_PROPELLER_CC_LD_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=labels"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld  -Wl,--lto-basic-block-sections=labels"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=labels"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=labels" )
+  "-DCMAKE_C_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names -fbasic-block-sections=labels"
+  "-DCMAKE_CXX_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names -fbasic-block-sections=labels"
+  "-DCMAKE_EXE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld  -Wl,--lto-basic-block-sections=labels"
+  "-DCMAKE_SHARED_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=labels"
+  "-DCMAKE_MODULE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=labels" )
 
 # Build Propeller Instrumented Clang Binary.
 PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD=${BASE_DIR}/baseline_propeller_only_clang_build
@@ -172,15 +173,15 @@ ls create_llvm_prof
 
 cp create_llvm_prof ${PATH_TO_ALL_BINARIES}
 
-/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --propeller_verbose_cluster_output --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split --propeller_cfg_dump_dir=${PATH_TO_RESULTS}/cfgs 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
+/usr/bin/time -v ${PATH_TO_CREATE_LLVM_PROF}/bin/create_llvm_prof  --format=propeller --propeller_verbose_cluster_output --binary=${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION}  --profile=${PATH_TO_PROFILES}/perf.data --out=${PATH_TO_PROFILES}/cluster.txt  --propeller_symorder=${PATH_TO_PROFILES}/symorder.txt --profiled_binary_name=clang-${CLANG_VERSION} --propeller_call_chain_clustering --propeller_chain_split --propeller_cfg_dump_dir=${PATH_TO_ALL_RESULTS}/cfgs 2> ${PATH_TO_ALL_RESULTS}/mem_propeller_profile_conversion.txt
 
 # Build a Propeller Optimized binary without special propeller alignment.
 OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -fbasic-block-address-map"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -fbasic-block-address-map"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map" )
+  "-DCMAKE_C_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -fbasic-block-address-map"
+  "-DCMAKE_CXX_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -fbasic-block-address-map"
+  "-DCMAKE_EXE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_SHARED_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_MODULE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,--lto-basic-block-address-map" )
 
 mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}
 cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_NOALIGN_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
@@ -191,11 +192,11 @@ rm bin/clang-${CLANG_VERSION} && /usr/bin/time -v ninja clang 2> ${PATH_TO_ALL_R
 
 # Build a Propeller Optimized binary with special propeller alignment.
 OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS=(
-  "-DCMAKE_C_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true -fbasic-block-address-map"
-  "-DCMAKE_CXX_FLAGS=-funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true -fbasic-block-address-map"
-  "-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map"
-  "-DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map"
-  "-DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map" )
+  "-DCMAKE_C_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true -fbasic-block-address-map"
+  "-DCMAKE_CXX_FLAGS=${EXTRA_FLAGS} -funique-internal-linkage-names -fbasic-block-sections=list=${PATH_TO_PROFILES}/cluster.txt -mllvm -enable-align-basic-block-sections=true -fbasic-block-address-map"
+  "-DCMAKE_EXE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_SHARED_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map"
+  "-DCMAKE_MODULE_LINKER_FLAGS=${EXTRA_FLAGS} -fuse-ld=lld -Wl,--lto-basic-block-sections=${PATH_TO_PROFILES}/cluster.txt -Wl,--symbol-ordering-file=${PATH_TO_PROFILES}/symorder.txt -Wl,--no-warn-symbol-ordering -Wl,-gc-sections -Wl,-z,keep-text-section-prefix -Wl,-mllvm,-enable-align-basic-block-sections=true -Wl,--lto-basic-block-address-map" )
 
 mkdir -p ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD} && cd ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}
 cmake -G Ninja "${COMMON_CMAKE_FLAGS[@]}" "${OPTIMIZED_PROPELLER_CC_LD_ALIGN_CMAKE_FLAGS[@]}" ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
@@ -225,26 +226,6 @@ ln -sf ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} cla
 cd ..
 ninja clean
 perf stat -r1 -e instructions,cycles,L1-icache-misses,iTLB-misses,frontend_retired.dsb_miss:u -- bash -c "ninja -j48 clang && ninja clean" 2> ${PATH_TO_ALL_RESULTS}/perf_clang_propeller_align.txt
-
-
-printf "\nPropeller Instrumented Stats (PM)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-printf "Total Size\n"  >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}'  >> ${BASE_DIR}/Results/sizes_clang.txt
-printf ".text .ehframe bbaddrmap relocs\n"  >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_INSTRUMENTED_PROPELLER_CLANG_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }'  >> ${BASE_DIR}/Results/sizes_clang.txt
-
-printf "\nPropeller no-algin Optimized Stats (PO)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
-printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_OPTIMIZED_PROPELLER_NOALIGN_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
-
-printf "\nPropeller Optimized Stats (PO)\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-printf "Total Size\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-ls -l ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} |  awk '{print $5}' >> ${BASE_DIR}/Results/sizes_clang.txt
-printf ".text .ehframe bbaddrmap relocs\n" >> ${BASE_DIR}/Results/sizes_clang.txt
-${PATH_TO_TRUNK_LLVM_INSTALL}/bin/llvm-readelf -S ${PATH_TO_OPTIMIZED_PROPELLER_ALIGN_BUILD}/bin/clang-${CLANG_VERSION} | awk '{ if ($2 == ".text") { text = strtonum("0x" $6); } if ($2 == ".eh_frame") { eh_frame = strtonum("0x" $6); } if ($2 == ".llvm_bb_addr_map") { bbaddrmap = strtonum("0x" $6); } if ($2 == ".relocs") { relocs = strtonum("0x" $6); } }  END { printf "%d %d %d %d\n", text, eh_frame, bbaddrmap, relocs; }' >> ${BASE_DIR}/Results/sizes_clang.txt
-
 
 cd ${CWD} && ln -sf clang_propeller_binaries/Results Results
 
