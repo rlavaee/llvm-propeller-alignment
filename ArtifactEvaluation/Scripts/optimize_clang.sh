@@ -53,7 +53,7 @@ date > ${PATH_TO_ALL_RESULTS}/script_start_time.txt
 mkdir -p ${PATH_TO_LLVM_SOURCES} && cd ${PATH_TO_LLVM_SOURCES}
 git clone https://github.com/rlavaee/llvm-project -b read-cfg-edge-profile
 # Set correct git hash here!
-#cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 6ae7b735dbd50eb7ade1573a86d037a2943e679c
+cd ${PATH_TO_LLVM_SOURCES}/llvm-project && git reset --hard 5e48d014d835d56088403f0118013b5bfab04c6c
 #patch -p1 < ${CWD}/propeller-alignment.patch
 mkdir -p ${PATH_TO_TRUNK_LLVM_BUILD} && cd ${PATH_TO_TRUNK_LLVM_BUILD}
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_TARGETS_TO_BUILD=X86 -DLLVM_ENABLE_PROJECTS="clang;lld;compiler-rt" -DCMAKE_C_COMPILER=clang  -DCMAKE_CXX_COMPILER=clang++ -DLLVM_USE_LINKER=lld -DCMAKE_INSTALL_PREFIX="${PATH_TO_TRUNK_LLVM_INSTALL}" -DLLVM_ENABLE_RTTI=On -DLLVM_INCLUDE_TESTS=Off ${PATH_TO_LLVM_SOURCES}/llvm-project/llvm
